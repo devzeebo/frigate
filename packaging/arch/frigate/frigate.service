@@ -1,0 +1,25 @@
+[Unit]
+Description=Frigate NVR
+Documentation=https://docs.frigate.video
+After=network-online.target go2rtc-frigate.service frigate-nginx.service
+Wants=network-online.target
+Requires=go2rtc-frigate.service frigate-nginx.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/frigate
+Environment=PYTHONPATH=/opt/frigate
+Environment=DEFAULT_FFMPEG_VERSION=system
+Environment=INCLUDED_FFMPEG_VERSIONS=system
+Environment=NVIDIA_VISIBLE_DEVICES=all
+Environment=NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
+Environment=TOKENIZERS_PARALLELISM=true
+Environment=TRANSFORMERS_NO_ADVISORY_WARNINGS=1
+Environment=OPENCV_FFMPEG_LOGLEVEL=8
+ExecStart=/opt/frigate/.venv/bin/python -u -m frigate
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

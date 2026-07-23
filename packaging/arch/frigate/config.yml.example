@@ -1,0 +1,36 @@
+# Minimal NVIDIA GPU example for Arch / LXC installs.
+# Copy to /config/config.yml and adjust cameras / model path.
+
+mqtt:
+  enabled: false
+
+ffmpeg:
+  # Use system ffmpeg from ffmpeg-full / ffmpeg-cuda-full (AUR)
+  path: /usr
+  hwaccel_args: preset-nvidia
+
+detectors:
+  onnx:
+    type: onnx
+
+model:
+  model_type: yolo-generic
+  width: 320
+  height: 320
+  input_tensor: nchw
+  input_dtype: float
+  path: /config/model_cache/yolov9-t-320.onnx
+
+cameras:
+  # example:
+  # front_door:
+  #   ffmpeg:
+  #     inputs:
+  #       - path: rtsp://user:pass@192.168.1.10:554/stream1
+  #         roles:
+  #           - detect
+  #           - record
+  #   detect:
+  #     enabled: true
+  #     width: 1280
+  #     height: 720

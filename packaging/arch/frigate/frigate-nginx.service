@@ -1,0 +1,18 @@
+[Unit]
+Description=Frigate nginx (vod-enabled)
+Documentation=https://docs.frigate.video
+After=network-online.target go2rtc-frigate.service
+Wants=network-online.target go2rtc-frigate.service
+Before=frigate.service
+
+[Service]
+Type=simple
+Environment=DEFAULT_FFMPEG_VERSION=system
+Environment=INCLUDED_FFMPEG_VERSIONS=system
+ExecStart=/usr/lib/frigate/frigate-nginx-start.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

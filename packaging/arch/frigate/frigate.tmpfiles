@@ -1,0 +1,10 @@
+# Frigate hardcoded paths (see frigate/const.py)
+d /config 0755 root root -
+d /config/model_cache 0755 root root -
+d /media/frigate 0755 root root -
+d /media/frigate/clips 0755 root root -
+d /media/frigate/recordings 0755 root root -
+d /media/frigate/exports 0755 root root -
+d /tmp/cache 0755 root root -
+d /etc/letsencrypt/www 0755 root root -
+d /etc/letsencrypt/live/frigate 0755 root root -

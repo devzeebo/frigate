@@ -1,0 +1,20 @@
+[Unit]
+Description=Frigate go2rtc restreamer
+Documentation=https://docs.frigate.video
+After=network-online.target
+Wants=network-online.target
+Before=frigate.service frigate-nginx.service
+
+[Service]
+Type=simple
+Environment=DEFAULT_FFMPEG_VERSION=system
+Environment=INCLUDED_FFMPEG_VERSIONS=system
+Environment=NVIDIA_VISIBLE_DEVICES=all
+Environment=NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
+ExecStart=/usr/lib/frigate/go2rtc-frigate.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

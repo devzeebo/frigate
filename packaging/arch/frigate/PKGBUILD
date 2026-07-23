@@ -1,0 +1,224 @@
+# Maintainer: local packaging for Arch LXC + NVIDIA (not an official AUR package yet)
+# shellcheck disable=SC2034,SC2154
+
+pkgbase=frigate
+pkgname=(frigate-nginx frigate)
+pkgver=0.17.2
+pkgrel=1
+pkgdesc='NVR with realtime local object detection for IP cameras'
+arch=('x86_64')
+url='https://frigate.video'
+license=('MIT')
+makedepends=(
+  base-devel
+  ccache
+  git
+  npm
+  nodejs
+  openssl
+  pcre2
+  python
+  python-pip
+  python-virtualenv
+  wget
+  zlib
+)
+options=('!strip' '!debug')
+source=(
+  "frigate-${pkgver}.tar.gz::https://github.com/blakeblackshear/frigate/archive/refs/tags/v${pkgver}.tar.gz"
+  "nginx-1.27.4.tar.gz::https://nginx.org/download/nginx-1.27.4.tar.gz"
+  "nginx-vod-module-1.31.tar.gz::https://github.com/kaltura/nginx-vod-module/archive/refs/tags/1.31.tar.gz"
+  "nginx-secure-token-module-1.5.tar.gz::https://github.com/kaltura/nginx-secure-token-module/archive/refs/tags/1.5.tar.gz"
+  "ngx_devel_kit-0.3.3.tar.gz::https://github.com/vision5/ngx_devel_kit/archive/refs/tags/v0.3.3.tar.gz"
+  "set-misc-nginx-module-0.33.tar.gz::https://github.com/openresty/set-misc-nginx-module/archive/refs/tags/v0.33.tar.gz"
+  "tempio_amd64::https://github.com/home-assistant/tempio/releases/download/2021.09.0/tempio_amd64"
+  nginx-vod-rbsp.patch
+  requirements-arch.txt
+  frigate.service
+  frigate-nginx.service
+  go2rtc-frigate.service
+  frigate-nginx-start.sh
+  go2rtc-frigate.sh
+  frigate.install
+  frigate.tmpfiles
+  frigate.sysusers
+  config.yml.example
+  README.md
+)
+sha256sums=(
+  'e143d6d6e595cbc276b302f955fc0f9917e678823e515459a358140060edce3d'
+  '294816f879b300e621fa4edd5353dd1ec00badb056399eceb30de7db64b753b2'
+  'ace04201cf2d2b1a3e5e732a22b92225b8ce61a494df9cc7f79d97efface8952'
+  '9809b7797e049429627a2c9e78c78e4b27bf4a2d0c7274a126cb6bb16ddd4215'
+  'faa2fcd5168b10764d35081356511d5f84db5c526a1aa4b6add2db94b6853b2b'
+  'cd5e2cc834bcfa30149e7511f2b5a2183baf0b70dc091af717a89a64e44a2985'
+  'b7b93ebfd24c1161cec7aecfad62ab51f2241149358cef354b86cdbc6a60546f'
+  'SKIP'
+  'SKIP'
+  'SKIP'
+  'SKIP'
+  'SKIP'
+  'SKIP'
+  'SKIP'
+  'SKIP'
+  'SKIP'
+  'SKIP'
+  'SKIP'
+  'SKIP'
+)
+
+prepare() {
+  # Raise vod MAX_CLIPS and apply Frigate rbsp patch (from docker/main/build_nginx.sh)
+  sed -i 's/MAX_CLIPS (128)/MAX_CLIPS (1080)/g' \
+    "${srcdir}/nginx-vod-module-1.31/vod/media_set.h"
+  patch -d "${srcdir}/nginx-vod-module-1.31" -p1 < "${srcdir}/nginx-vod-rbsp.patch"
+}
+
+build() {
+  export PATH="/usr/lib/ccache/bin:${PATH}"
+
+  # --- nginx + vod ---
+  cd "${srcdir}/nginx-1.27.4"
+  ./configure \
+    --prefix=/usr/local/nginx \
+    --with-file-aio \
+    --with-http_sub_module \
+    --with-http_ssl_module \
+    --with-http_v2_module \
+    --with-http_auth_request_module \
+    --with-http_realip_module \
+    --with-threads \
+    --add-module="${srcdir}/ngx_devel_kit-0.3.3" \
+    --add-module="${srcdir}/set-misc-nginx-module-0.33" \
+    --add-module="${srcdir}/nginx-vod-module-1.31" \
+    --add-module="${srcdir}/nginx-secure-token-module-1.5" \
+    --with-cc-opt='-O3 -Wno-error=implicit-fallthrough'
+  make -j"$(nproc)"
+
+  # --- Frigate web UI ---
+  cd "${srcdir}/frigate-${pkgver}/web"
+  npm ci
+  npm run build
+  mkdir -p dist/assets
+  if [[ -d dist/BASE_PATH/monacoeditorwork ]]; then
+    mv dist/BASE_PATH/monacoeditorwork/* dist/assets/ || true
+    rm -rf dist/BASE_PATH
+  fi
+
+  # --- Python venv with system CUDA onnxruntime ---
+  cd "${srcdir}/frigate-${pkgver}"
+  python -m venv --system-site-packages "${srcdir}/frigate-venv"
+  # shellcheck disable=SC1091
+  source "${srcdir}/frigate-venv/bin/activate"
+  pip install --upgrade pip wheel
+  # Ensure pip does not pull a CPU onnxruntime that shadows Arch CUDA
+  pip install -r "${srcdir}/requirements-arch.txt"
+  pip uninstall -y onnxruntime onnxruntime-gpu 2>/dev/null || true
+  deactivate
+}
+
+package_frigate-nginx() {
+  pkgdesc='Frigate custom nginx with vod / secure-token / set-misc modules'
+  depends=('openssl' 'pcre2' 'zlib')
+  provides=('frigate-nginx')
+
+  cd "${srcdir}/nginx-1.27.4"
+  make DESTDIR="${pkgdir}" install
+  rm -rf "${pkgdir}/usr/local/nginx/html"
+  # Frigate package owns conf/templates; keep mime.types for include
+  find "${pkgdir}/usr/local/nginx/conf" -mindepth 1 -maxdepth 1 ! -name 'mime.types' -exec rm -rf {} +
+  rm -f "${pkgdir}/usr/local/nginx/conf/"*.default
+
+  install -Dm644 "${srcdir}/frigate-nginx.service" \
+    "${pkgdir}/usr/lib/systemd/system/frigate-nginx.service"
+  install -Dm755 "${srcdir}/frigate-nginx-start.sh" \
+    "${pkgdir}/usr/lib/frigate/frigate-nginx-start.sh"
+
+  # tempio for conf template rendering (used by start script)
+  install -Dm755 "${srcdir}/tempio_amd64" "${pkgdir}/usr/local/tempio/bin/tempio"
+}
+
+package_frigate() {
+  pkgdesc='NVR with realtime local object detection for IP cameras (Arch / NVIDIA)'
+  depends=(
+    frigate-nginx
+    go2rtc
+    ffmpeg
+    python
+    python-onnxruntime-cuda
+    onnxruntime-cuda
+    python-numpy
+    python-scipy
+    python-opencv
+    nvidia-utils
+    openssl
+  )
+  optdepends=(
+    'ffmpeg-full: AUR build with full codec/CUDA support (recommended)'
+    'ffmpeg-cuda-full: alternate AUR ffmpeg with CUDA'
+  )
+  install=frigate.install
+  backup=()
+
+  local src="${srcdir}/frigate-${pkgver}"
+  local opt="${pkgdir}/opt/frigate"
+
+  install -dm755 "${opt}"
+  cp -a "${src}/frigate" "${opt}/"
+  cp -a "${src}/migrations" "${opt}/"
+  install -dm755 "${opt}/web"
+  cp -a "${src}/web/dist/." "${opt}/web/"
+  install -Dm644 "${src}/LICENSE" "${opt}/LICENSE"
+  install -Dm644 "${src}/labelmap.txt" "${pkgdir}/labelmap.txt"
+  install -Dm644 "${src}/audio-labelmap.txt" "${pkgdir}/audio-labelmap.txt"
+
+  # venv
+  cp -a "${srcdir}/frigate-venv" "${opt}/.venv"
+  # Rewrite venv shebangs / paths to install location
+  local venv="${opt}/.venv"
+  sed -i "s|${srcdir}/frigate-venv|/opt/frigate/.venv|g" "${venv}/bin/"* 2>/dev/null || true
+  # virtualenv.cfg / pyvenv.cfg
+  if [[ -f "${venv}/pyvenv.cfg" ]]; then
+    sed -i "s|${srcdir}/frigate-venv|/opt/frigate/.venv|g" "${venv}/pyvenv.cfg"
+  fi
+
+  # Helpers used by go2rtc / nginx start scripts (0.17.x layout)
+  install -Dm644 "${src}/docker/main/rootfs/usr/local/go2rtc/create_config.py" \
+    "${pkgdir}/usr/local/go2rtc/create_config.py"
+  install -Dm644 "${src}/docker/main/rootfs/usr/local/ffmpeg/get_ffmpeg_path.py" \
+    "${pkgdir}/usr/local/ffmpeg/get_ffmpeg_path.py"
+  install -dm755 "${pkgdir}/usr/local/nginx/conf" "${pkgdir}/usr/local/nginx/templates"
+  cp -a "${src}/docker/main/rootfs/usr/local/nginx/conf/." "${pkgdir}/usr/local/nginx/conf/"
+  cp -a "${src}/docker/main/rootfs/usr/local/nginx/templates/." "${pkgdir}/usr/local/nginx/templates/"
+  # 0.17.x helpers (and optionally newer combined helper if present in the tree)
+  for helper in get_base_path.py get_listen_settings.py get_nginx_settings.py; do
+    if [[ -f "${src}/docker/main/rootfs/usr/local/nginx/${helper}" ]]; then
+      install -Dm644 "${src}/docker/main/rootfs/usr/local/nginx/${helper}" \
+        "${pkgdir}/usr/local/nginx/${helper}"
+    fi
+  done
+  # Extra labelmaps shipped under rootfs in some releases
+  if [[ -d "${src}/docker/main/rootfs/labelmap" ]]; then
+    install -dm755 "${pkgdir}/labelmap"
+    cp -a "${src}/docker/main/rootfs/labelmap/." "${pkgdir}/labelmap/"
+  fi
+  # Point Frigate default ffmpeg layout at system binaries
+  install -dm755 "${pkgdir}/usr/lib/ffmpeg/system/bin"
+  ln -sf /usr/bin/ffmpeg "${pkgdir}/usr/lib/ffmpeg/system/bin/ffmpeg"
+  ln -sf /usr/bin/ffprobe "${pkgdir}/usr/lib/ffmpeg/system/bin/ffprobe"
+
+  install -Dm755 "${srcdir}/go2rtc-frigate.sh" \
+    "${pkgdir}/usr/lib/frigate/go2rtc-frigate.sh"
+  install -Dm644 "${srcdir}/frigate.service" \
+    "${pkgdir}/usr/lib/systemd/system/frigate.service"
+  install -Dm644 "${srcdir}/go2rtc-frigate.service" \
+    "${pkgdir}/usr/lib/systemd/system/go2rtc-frigate.service"
+  install -Dm644 "${srcdir}/frigate.tmpfiles" \
+    "${pkgdir}/usr/lib/tmpfiles.d/frigate.conf"
+  install -Dm644 "${srcdir}/frigate.sysusers" \
+    "${pkgdir}/usr/lib/sysusers.d/frigate.conf"
+  install -Dm644 "${srcdir}/config.yml.example" \
+    "${pkgdir}/usr/share/frigate/config.yml.example"
+  install -Dm644 "${srcdir}/README.md" \
+    "${pkgdir}/usr/share/doc/frigate/README.md"
+}
