@@ -4,7 +4,7 @@
 pkgbase=frigate
 pkgname=(frigate-nginx frigate)
 pkgver=0.17.2
-pkgrel=2
+pkgrel=3
 pkgdesc='NVR with realtime local object detection for IP cameras'
 arch=('x86_64')
 url='https://frigate.video'
@@ -13,8 +13,7 @@ makedepends=(
   base-devel
   ccache
   git
-  npm
-  nodejs
+  nvm
   openssl
   pcre2
   python
@@ -94,7 +93,13 @@ build() {
     --with-cc-opt='-O3 -Wno-error=implicit-fallthrough'
   make -j"$(nproc)"
 
-  # --- Frigate web UI ---
+  # --- Frigate web UI (nvm Node 20 from build user home) ---
+  export NVM_DIR="${HOME}/.nvm"
+  # shellcheck disable=SC1091
+  source /usr/share/nvm/init-nvm.sh
+  nvm install 20
+  nvm use 20
+
   cd "${srcdir}/frigate-${pkgver}/web"
   npm ci
   npm run build

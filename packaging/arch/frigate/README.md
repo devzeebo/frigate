@@ -86,9 +86,13 @@ AUR packages are **not** fetched by `makepkg`. Install them first:
 
 ```bash
 # AUR helper required (yay, paru, ...)
-yay -S go2rtc ffmpeg-full
-# alternate: yay -S go2rtc ffmpeg-cuda-full
+yay -S nvm go2rtc ffmpeg-full
+# alternate: yay -S nvm go2rtc ffmpeg-cuda-full
 ```
+
+Build-time Node comes from nvm (not pacman `nodejs`). The PKGBUILD sources
+`/usr/share/nvm/init-nvm.sh` and runs `nvm install 20` / `nvm use 20` using
+versions under the build user's `~/.nvm`. Node is not required at runtime.
 
 Copy this directory into the CT (or clone the Frigate repo and `cd packaging/arch/frigate`):
 
@@ -150,5 +154,6 @@ Services run as **root** (same as the upstream container) so GPU and device node
 ## Building notes
 
 - Nginx compile steps are ported from Frigate’s `docker/main/build_nginx.sh` (no Debian `apt`).
+- Web UI build uses nvm-managed Node 20 (matches upstream `node:20`); pacman `nodejs` / `npm` are not used.
 - Python deps are installed with `uv` into `/opt/frigate/.venv` from `requirements-arch.txt` (numpy, scipy, opencv, and `onnxruntime-gpu` plus NVIDIA CUDA pip libs). No Arch/AUR Python packages are required at runtime beyond `python` and `nvidia-utils`.
 - TFLite / OpenVINO wheels are omitted; this package targets NVIDIA ONNX detection.

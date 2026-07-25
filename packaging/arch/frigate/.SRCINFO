@@ -1,15 +1,14 @@
 pkgbase = frigate
 	pkgdesc = NVR with realtime local object detection for IP cameras
 	pkgver = 0.17.2
-	pkgrel = 2
+	pkgrel = 3
 	url = https://frigate.video
 	arch = x86_64
 	license = MIT
 	makedepends = base-devel
 	makedepends = ccache
 	makedepends = git
-	makedepends = npm
-	makedepends = nodejs
+	makedepends = nvm
 	makedepends = openssl
 	makedepends = pcre2
 	makedepends = python
