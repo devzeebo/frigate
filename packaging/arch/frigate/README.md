@@ -115,7 +115,7 @@ NVIDIA-oriented defaults in the example:
 
 - `ffmpeg.path: /usr` (system ffmpeg from AUR)
 - `ffmpeg.hwaccel_args: preset-nvidia`
-- `detectors.onnx` with `python-onnxruntime-cuda`
+- `detectors.onnx` with pip `onnxruntime-gpu` (CUDA EP in `/opt/frigate/.venv`)
 
 UI: port **8971** (authenticated). Internal API: **5000**. Restream: **8554**. WebRTC: **8555**.
 
@@ -142,7 +142,7 @@ Services run as **root** (same as the upstream container) so GPU and device node
 | Symptom | Check |
 |---------|--------|
 | `nvidia-smi` fails in CT | Host driver, device binds, matching `nvidia-utils` |
-| CUDA / ORT errors | Driver skew; `python -c 'import onnxruntime as o; print(o.get_available_providers())'` |
+| CUDA / ORT errors | Driver skew; `/opt/frigate/.venv/bin/python -c 'import onnxruntime as o; print(o.get_available_providers())'` |
 | No recording playback | `frigate-nginx` running; vod build succeeded |
 | go2rtc / live view broken | `systemctl status go2rtc-frigate`; `/dev/shm/go2rtc.yaml` |
 | Frame drops / shm errors | Increase `/dev/shm` size |
@@ -150,5 +150,5 @@ Services run as **root** (same as the upstream container) so GPU and device node
 ## Building notes
 
 - Nginx compile steps are ported from Frigate’s `docker/main/build_nginx.sh` (no Debian `apt`).
-- Python deps use `requirements-arch.txt` (no pip `onnxruntime`; Arch `python-onnxruntime-cuda` is used via `--system-site-packages`).
+- Python deps are installed with `uv` into `/opt/frigate/.venv` from `requirements-arch.txt` (numpy, scipy, opencv, and `onnxruntime-gpu` plus NVIDIA CUDA pip libs). No Arch/AUR Python packages are required at runtime beyond `python` and `nvidia-utils`.
 - TFLite / OpenVINO wheels are omitted; this package targets NVIDIA ONNX detection.

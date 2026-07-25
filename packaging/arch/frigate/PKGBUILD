@@ -4,7 +4,7 @@
 pkgbase=frigate
 pkgname=(frigate-nginx frigate)
 pkgver=0.17.2
-pkgrel=1
+pkgrel=2
 pkgdesc='NVR with realtime local object detection for IP cameras'
 arch=('x86_64')
 url='https://frigate.video'
@@ -18,8 +18,7 @@ makedepends=(
   openssl
   pcre2
   python
-  python-pip
-  python-virtualenv
+  uv
   wget
   zlib
 )
@@ -105,16 +104,17 @@ build() {
     rm -rf dist/BASE_PATH
   fi
 
-  # --- Python venv with system CUDA onnxruntime ---
+  # --- Python venv via uv (all deps from pip, including CUDA ORT) ---
   cd "${srcdir}/frigate-${pkgver}"
-  python -m venv --system-site-packages "${srcdir}/frigate-venv"
-  # shellcheck disable=SC1091
-  source "${srcdir}/frigate-venv/bin/activate"
-  pip install --upgrade pip wheel
-  # Ensure pip does not pull a CPU onnxruntime that shadows Arch CUDA
-  pip install -r "${srcdir}/requirements-arch.txt"
-  pip uninstall -y onnxruntime onnxruntime-gpu 2>/dev/null || true
-  deactivate
+  uv venv "${srcdir}/frigate-venv"
+  local venv_python="${srcdir}/frigate-venv/bin/python"
+  uv pip install --python "${venv_python}" -r "${srcdir}/requirements-arch.txt"
+  # Transitive deps may pull CPU onnxruntime; force the CUDA build last
+  uv pip uninstall --python "${venv_python}" onnxruntime onnxruntime-gpu \
+    2>/dev/null || true
+  uv pip install --python "${venv_python}" \
+    --extra-index-url https://pypi.nvidia.com \
+    'onnxruntime-gpu==1.24.*'
 }
 
 package_frigate-nginx() {
@@ -145,11 +145,6 @@ package_frigate() {
     go2rtc
     ffmpeg
     python
-    python-onnxruntime-cuda
-    onnxruntime-cuda
-    python-numpy
-    python-scipy
-    python-opencv
     nvidia-utils
     openssl
   )
