@@ -1,4 +1,7 @@
 post_install() {
+  # Pick up /etc/ld.so.conf.d/frigate-cuda.conf (pip nvidia-* CUDA libs).
+  ldconfig
+
   cat <<EOF
 Frigate has been installed under /opt/frigate.
 

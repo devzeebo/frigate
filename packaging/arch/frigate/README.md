@@ -184,7 +184,7 @@ Services run as **root** (same as the upstream container) so GPU and device node
 | Symptom | Check |
 |---------|--------|
 | `nvidia-smi` fails in CT | Host driver, device binds, matching `nvidia-utils` |
-| CUDA / ORT errors | Driver skew; `/opt/frigate/.venv/bin/python -c 'import onnxruntime as o; print(o.get_available_providers())'` |
+| CUDA / ORT `libcublasLt.so.12` | Pip CUDA libs must be on the linker path. Package installs `/etc/ld.so.conf.d/frigate-cuda.conf`; run `ldconfig`, then `/opt/frigate/.venv/bin/python -c 'import onnxruntime as ort; s=ort.InferenceSession("/config/model_cache/yolov9-t-320.onnx", providers=["CUDAExecutionProvider","CPUExecutionProvider"]); print(s.get_providers())'` |
 | Install fails: exists in filesystem under `/opt/frigate` | Source tree was cloned to the install root; see recovery below |
 | No recording playback | `frigate-nginx` running; vod build succeeded |
 | go2rtc / live view broken | `systemctl status go2rtc-frigate`; `/dev/shm/go2rtc.yaml` |
@@ -210,4 +210,5 @@ makepkg -si
 - Nginx compile steps are ported from Frigate’s `docker/main/build_nginx.sh` (no Debian `apt`). Patches: GCC 15+ exit_process prototype (`nginx-vod-exit-process.patch`) and FFmpeg 7+ `avcodec_close` removal (`nginx-vod-ffmpeg8.patch`).
 - Web UI build uses nvm-managed Node 20 (matches upstream `node:20`); pacman `nodejs` / `npm` are not used.
 - Python deps are installed with `uv` into `/opt/frigate/.venv` from `requirements-arch.txt` (numpy, scipy, opencv, and `onnxruntime-gpu` plus NVIDIA CUDA pip libs). The venv uses uv-managed **CPython 3.13** (bundled under `/opt/frigate/.python`) because Arch’s system Python is newer than many pinned wheels (for example `tokenizers==0.20.3`). No Arch/AUR Python packages are required at runtime beyond helper scripts that call system `python3`, plus `nvidia-utils`.
+- Pip `nvidia-*-cu12` shared libraries are registered in `/etc/ld.so.conf.d/frigate-cuda.conf` so ONNX Runtime’s CUDA EP can `dlopen` them without a system CUDA toolkit.
 - TFLite / OpenVINO wheels are omitted; this package targets NVIDIA ONNX detection.

@@ -4,7 +4,7 @@
 pkgbase=frigate
 pkgname=(frigate-nginx frigate)
 pkgver=0.17.2
-pkgrel=12
+pkgrel=13
 pkgdesc='NVR with realtime local object detection for IP cameras'
 arch=('x86_64')
 url='https://frigate.video'
@@ -207,6 +207,18 @@ package_frigate() {
       -e "s|${srcdir}/frigate-venv|/opt/frigate/.venv|g" \
       -e "s|${srcdir}/uv-python|/opt/frigate/.python|g" \
       "${venv}/pyvenv.cfg"
+  fi
+
+  # onnxruntime-gpu dlopens the CUDA EP against pip nvidia-* libs. Register
+  # those dirs with the dynamic linker (same approach as docker/tensorrt
+  # ld.so.conf.d/cuda_tensorrt.conf). frigate.install runs ldconfig.
+  install -dm755 "${pkgdir}/etc/ld.so.conf.d"
+  local ldconf="${pkgdir}/etc/ld.so.conf.d/frigate-cuda.conf"
+  find "${venv}/lib" -type d -path '*/site-packages/nvidia/*/lib' -print \
+    | sed "s|^${pkgdir}||" \
+    | sort > "${ldconf}"
+  if [[ ! -s "${ldconf}" ]]; then
+    echo "warning: no nvidia pip lib dirs found; CUDA EP may fail at runtime" >&2
   fi
 
   # Helpers used by go2rtc / nginx start scripts (0.17.x layout)
