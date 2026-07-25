@@ -4,7 +4,7 @@
 pkgbase=frigate
 pkgname=(frigate-nginx frigate)
 pkgver=0.17.2
-pkgrel=6
+pkgrel=9
 pkgdesc='NVR with realtime local object detection for IP cameras'
 arch=('x86_64')
 url='https://frigate.video'
@@ -78,6 +78,13 @@ prepare() {
   patch -d "${srcdir}/nginx-vod-module-1.31" -p1 < "${srcdir}/nginx-vod-exit-process.patch"
   # FFmpeg 7+ removed avcodec_close; use avcodec_free_context
   patch -d "${srcdir}/nginx-vod-module-1.31" -p1 < "${srcdir}/nginx-vod-ffmpeg8.patch"
+
+  # 0.17.2 falls back to tensorflow when tflite_runtime is missing. Arch uses
+  # CPython 3.13 (no tflite_runtime wheels); backport upstream #21876 and use
+  # ai-edge-litert from requirements-arch.txt instead.
+  find "${srcdir}/frigate-${pkgver}/frigate" -type f -name '*.py' -exec sed -i \
+    's/from tensorflow\.lite\.python\.interpreter import/from ai_edge_litert.interpreter import/g' \
+    {} +
 }
 
 build() {
@@ -120,6 +127,9 @@ build() {
   # --- Python venv via uv (CPython 3.13; Arch system Python is too new for
   # some pinned wheels such as tokenizers==0.20.3 required by transformers) ---
   cd "${srcdir}/frigate-${pkgver}"
+  # Upstream generates this via `make version` before Docker builds; it is
+  # gitignored and absent from release tarballs.
+  printf 'VERSION = "%s-arch%d"\n' "${pkgver}" "${pkgrel}" > frigate/version.py
   export UV_PYTHON_INSTALL_DIR="${srcdir}/uv-python"
   uv python install 3.13
   uv venv --python 3.13 --relocatable "${srcdir}/frigate-venv"

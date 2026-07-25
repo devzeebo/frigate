@@ -1,6 +1,7 @@
 # Filtered Frigate Python deps for Arch + NVIDIA.
-# Excludes: tflite_runtime (cp311 wheels), openvino, tensorflow*,
-# mypy/types (dev), memray, degirum, Hailo helper pins that are unused without Hailo.
+# Excludes: tflite_runtime (cp311-only wheels; use ai-edge-litert instead),
+# openvino, tensorflow*, mypy/types (dev), memray, degirum, Hailo helper pins
+# that are unused without Hailo.
 # CUDA runtime libs come from NVIDIA pip packages; the driver is Arch nvidia-utils.
 --extra-index-url https://pypi.nvidia.com
 aiofiles == 24.1.*
@@ -53,6 +54,9 @@ nvidia-cusparse-cu12==12.5.8.93
 nvidia-nccl-cu12==2.26.2.post1
 nvidia-nvjitlink-cu12==12.8.93
 onnxruntime-gpu==1.24.*
+# Successor to tflite_runtime; provides Interpreter for bird/audio/face TFLite paths
+# (0.17.2 code falls back to tensorflow unless patched; see PKGBUILD prepare).
+ai-edge-litert == 2.1.*
 transformers == 4.45.*
 google-genai == 1.58.*
 ollama == 0.6.*

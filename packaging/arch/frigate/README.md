@@ -95,12 +95,22 @@ Build-time Node comes from nvm (not pacman `nodejs`). The PKGBUILD sources
 `/usr/share/nvm/init-nvm.sh` and runs `nvm install 20` / `nvm use 20` using
 versions under the build user's `~/.nvm`. Node is not required at runtime.
 
-Copy this directory into the CT (or clone the Frigate repo and `cd packaging/arch/frigate`):
+**Do not clone or copy sources to `/opt/frigate`.** That path is the package
+install root. Pacman will refuse to install over an existing unowned tree
+there (for example a git checkout used to build). Build from somewhere else;
+the PKGBUILD downloads the Frigate release tarball itself.
+
+Clone the repo (or copy only this packaging directory) outside `/opt`:
 
 ```bash
-cd packaging/arch/frigate
+git clone https://github.com/blakeblackshear/frigate.git /usr/src/frigate
+cd /usr/src/frigate/packaging/arch/frigate
 makepkg -si
 ```
+
+Alternatively, copy only `packaging/arch/frigate` somewhere under your home
+directory or `/usr/src` and run `makepkg -si` there; that directory is
+self-contained and fetches its sources during the build.
 
 Enable services:
 
@@ -148,9 +158,25 @@ Services run as **root** (same as the upstream container) so GPU and device node
 |---------|--------|
 | `nvidia-smi` fails in CT | Host driver, device binds, matching `nvidia-utils` |
 | CUDA / ORT errors | Driver skew; `/opt/frigate/.venv/bin/python -c 'import onnxruntime as o; print(o.get_available_providers())'` |
+| Install fails: exists in filesystem under `/opt/frigate` | Source tree was cloned to the install root; see recovery below |
 | No recording playback | `frigate-nginx` running; vod build succeeded |
 | go2rtc / live view broken | `systemctl status go2rtc-frigate`; `/dev/shm/go2rtc.yaml` |
 | Frame drops / shm errors | Increase `/dev/shm` size |
+
+### Install conflict: `/opt/frigate` already exists
+
+If you cloned the repo to `/opt/frigate` and `makepkg -si` failed at the
+pacman install step with “exists in filesystem”, move the clone out of the
+install root, then install the built packages (or rebuild):
+
+```bash
+mv /opt/frigate /usr/src/frigate
+cd /usr/src/frigate/packaging/arch/frigate
+# if packages already built:
+sudo pacman -U frigate-nginx-*.pkg.tar.zst frigate-*.pkg.tar.zst
+# or rebuild and install:
+makepkg -si
+```
 
 ## Building notes
 

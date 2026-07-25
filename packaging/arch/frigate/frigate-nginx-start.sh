@@ -43,4 +43,6 @@ else
     "${tempio_bin}" -template /usr/local/nginx/templates/listen.gotmpl \
       -out /usr/local/nginx/conf/listen.conf
 fi
-exec nginx -g 'daemon off;'
+# nginx.conf already has "daemon off;"; do not also pass -g or nginx exits with
+# "daemon directive is duplicate".
+exec nginx
