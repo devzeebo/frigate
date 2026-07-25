@@ -6,7 +6,8 @@ Next steps:
   1. Ensure NVIDIA works in this container: nvidia-smi
   2. Copy the sample config if needed:
        cp /usr/share/frigate/config.yml.example /config/config.yml
-  3. Place an ONNX model under /config/model_cache/ and update the path
+  3. Download a YOLOv9 ONNX model (interactive; uv required):
+       frigate-download-yolo
   4. Enable and start services:
        systemctl enable --now go2rtc-frigate frigate-nginx frigate
 
@@ -20,6 +21,15 @@ like ffmpeg-full only matter if you need extra/nonfree codecs.
 
 See /usr/share/doc/frigate/README.md for Proxmox LXC + NVIDIA setup.
 EOF
+
+  if [[ -t 0 ]] && command -v frigate-download-yolo >/dev/null 2>&1; then
+    echo
+    frigate-download-yolo || true
+  else
+    echo
+    echo "YOLOv9 setup skipped (no TTY or script missing)."
+    echo "Run later: frigate-download-yolo"
+  fi
 }
 
 post_upgrade() {

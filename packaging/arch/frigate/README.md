@@ -123,14 +123,39 @@ sudo systemctl enable --now go2rtc-frigate frigate-nginx frigate
 
 ```bash
 sudo cp /usr/share/frigate/config.yml.example /config/config.yml
-# edit cameras, put an ONNX model under /config/model_cache/
+# edit cameras; download a YOLOv9 ONNX model (see below)
 ```
+
+### YOLOv9 ONNX model
+
+After install (or any time), run:
+
+```bash
+frigate-download-yolo
+```
+
+The script lists ONNX files already in `/config/model_cache/`, prompts for
+model size (`t`/`s`/`m`/`c`/`e`, or **skip**), then image size (`320`/`640`).
+It builds a **separate** uv venv under `/var/cache/frigate/yolov9-export`
+(CPU PyTorch; not Frigate's `/opt/frigate/.venv`), downloads WongKinYiu
+`*-converted.pt` weights, and exports ONNX.
+
+Non-interactive:
+
+```bash
+frigate-download-yolo --list
+frigate-download-yolo --non-interactive t 320
+```
+
+Requires `uv` (package dependency). First run caches the export env and weights
+so later variants are faster.
 
 NVIDIA-oriented defaults in the example:
 
 - `ffmpeg.path: /usr` (system ffmpeg; repo package is fine)
 - `ffmpeg.hwaccel_args: preset-nvidia`
 - `detectors.onnx` with pip `onnxruntime-gpu` (CUDA EP in `/opt/frigate/.venv`)
+- `model.path: /config/model_cache/yolov9-t-320.onnx`
 
 UI: port **8971** (authenticated). Internal API: **5000**. Restream: **8554**. WebRTC: **8555**.
 
@@ -139,6 +164,8 @@ UI: port **8971** (authenticated). Internal API: **5000**. Restream: **8554**. W
 | Path | Notes |
 |------|------|
 | `/opt/frigate` | Application + `.venv` + bundled uv CPython 3.13 under `.python` |
+| `/usr/bin/frigate-download-yolo` | Interactive YOLOv9 ONNX export into `/config/model_cache` |
+| `/var/cache/frigate/yolov9-export` | Separate uv venv + YOLOv9 source/weights for ONNX export |
 | `/usr/local/nginx` | Frigate vod nginx |
 | `/usr/local/go2rtc/create_config.py` | Builds `/dev/shm/go2rtc.yaml` |
 | `/usr/lib/ffmpeg/system/bin` | Symlinks to `/usr/bin/ffmpeg` |

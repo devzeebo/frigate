@@ -1,0 +1,313 @@
+#!/usr/bin/env bash
+# Interactive YOLOv9 ONNX export for Frigate Arch installs.
+# Uses a dedicated uv venv (separate from /opt/frigate/.venv) and WongKinYiu
+# converted.pt weights. No Docker required.
+set -euo pipefail
+
+MODEL_CACHE="${FRIGATE_MODEL_CACHE:-/config/model_cache}"
+EXPORT_HOME="${FRIGATE_YOLO_EXPORT_HOME:-/var/cache/frigate/yolov9-export}"
+YOLO_REPO_URL="${FRIGATE_YOLO_REPO_URL:-https://github.com/WongKinYiu/yolov9/archive/refs/heads/main.tar.gz}"
+YOLO_WEIGHTS_BASE="${FRIGATE_YOLO_WEIGHTS_BASE:-https://github.com/WongKinYiu/yolov9/releases/download/v0.1}"
+PYTHON_VERSION="${FRIGATE_YOLO_PYTHON_VERSION:-3.11}"
+
+MODEL_SIZES=(t s m c e)
+IMG_SIZES=(320 640)
+
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") [--non-interactive SIZE IMG_SIZE] [--list] [--help]
+
+Download and export a YOLOv9 ONNX model into ${MODEL_CACHE}.
+
+Uses a dedicated uv venv under ${EXPORT_HOME} (not Frigate's runtime venv).
+Requires: uv, curl (or wget).
+
+Options:
+  --list                     Show models already in ${MODEL_CACHE}
+  --non-interactive S I      Export yolov9-S-I.onnx without prompts (e.g. t 320)
+  -h, --help                 Show this help
+
+Interactive mode (default) lists installed models, then prompts for size
+and image resolution. Choose skip to exit without downloading.
+EOF
+}
+
+list_installed() {
+  if [[ ! -d "${MODEL_CACHE}" ]]; then
+    if ! mkdir -p "${MODEL_CACHE}" 2>/dev/null; then
+      echo "Model cache not available yet: ${MODEL_CACHE}"
+      echo "  (none installed / directory missing)"
+      return 0
+    fi
+  fi
+  echo "Installed models in ${MODEL_CACHE}:"
+  local models=()
+  local f
+  mapfile -t models < <(find "${MODEL_CACHE}" -maxdepth 1 -type f -name '*.onnx' 2>/dev/null | sort)
+  if ((${#models[@]} == 0)); then
+    echo "  (none)"
+    return 0
+  fi
+  for f in "${models[@]}"; do
+    printf '  %s (%s)\n' "$(basename "${f}")" "$(du -h "${f}" | awk '{print $1}')"
+  done
+}
+
+require_uv() {
+  if ! command -v uv >/dev/null 2>&1; then
+    echo "error: uv is required to export YOLOv9 to ONNX" >&2
+    echo "Install with: pacman -S uv" >&2
+    exit 1
+  fi
+}
+
+download() {
+  local url="$1"
+  local dest="$2"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL -o "${dest}" "${url}"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O "${dest}" "${url}"
+  else
+    echo "error: need curl or wget to download ${url}" >&2
+    exit 1
+  fi
+}
+
+validate_choice() {
+  local value="$1"
+  shift
+  local opt
+  for opt in "$@"; do
+    if [[ "${value}" == "${opt}" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+prompt_choice() {
+  local prompt="$1"
+  local default="$2"
+  shift 2
+  local options=("$@")
+  local reply
+  local opts_display
+  opts_display=$(IFS='/'; echo "${options[*]}")
+
+  while true; do
+    read -r -p "${prompt} [${opts_display}] (default: ${default}): " reply || {
+      echo
+      echo "Input closed; skipping."
+      exit 0
+    }
+    reply="${reply:-${default}}"
+    reply="${reply,,}"
+    if validate_choice "${reply}" "${options[@]}"; then
+      printf '%s\n' "${reply}"
+      return 0
+    fi
+    echo "Invalid choice '${reply}'. Pick one of: ${opts_display}"
+  done
+}
+
+ensure_export_env() {
+  require_uv
+  mkdir -p "${EXPORT_HOME}"/{weights,src}
+
+  local venv="${EXPORT_HOME}/.venv"
+  local src="${EXPORT_HOME}/src/yolov9"
+  local marker="${EXPORT_HOME}/.env-ready"
+  local marker_ver="2"
+
+  export UV_PYTHON_INSTALL_DIR="${EXPORT_HOME}/.python"
+
+  if [[ -f "${marker}" ]] && [[ "$(cat "${marker}")" == "${marker_ver}" ]] \
+    && [[ -x "${venv}/bin/python" ]] && [[ -f "${src}/export.py" ]]; then
+    return 0
+  fi
+
+  echo "Preparing YOLOv9 export environment under ${EXPORT_HOME} (one-time; may take a few minutes)..."
+
+  if [[ ! -f "${src}/export.py" ]]; then
+    local tarball="${EXPORT_HOME}/src/yolov9.tar.gz"
+    echo "Downloading YOLOv9 source..."
+    download "${YOLO_REPO_URL}" "${tarball}"
+    rm -rf "${src}"
+    mkdir -p "${src}"
+    tar -xzf "${tarball}" -C "${EXPORT_HOME}/src"
+    # archive extracts as yolov9-main (or similar)
+    local extracted
+    extracted="$(find "${EXPORT_HOME}/src" -maxdepth 1 -type d -name 'yolov9-*' | head -n1)"
+    if [[ -z "${extracted}" || ! -f "${extracted}/export.py" ]]; then
+      echo "error: could not find export.py in YOLOv9 archive" >&2
+      exit 1
+    fi
+    rm -rf "${src}"
+    mv "${extracted}" "${src}"
+    rm -f "${tarball}"
+  fi
+
+  # Newer torch defaults weights_only=True; YOLOv9 checkpoints need False
+  sed -i \
+    "s/ckpt = torch.load(attempt_download(w), map_location='cpu')/ckpt = torch.load(attempt_download(w), map_location='cpu', weights_only=False)/g" \
+    "${src}/models/experimental.py"
+
+  uv python install "${PYTHON_VERSION}"
+  uv venv --python "${PYTHON_VERSION}" "${venv}"
+
+  # CPU torch is enough for ONNX export and avoids a multi-GB CUDA wheel
+  uv pip install --python "${venv}/bin/python" \
+    --index-url https://download.pytorch.org/whl/cpu \
+    torch torchvision
+
+  # Export-only deps: skip GUI OpenCV and leave torch pins to the CPU wheels above
+  local req="${EXPORT_HOME}/requirements-export.txt"
+  grep -v -E '^(torch|torchvision|opencv-python)([=<>]|$)' "${src}/requirements.txt" > "${req}"
+  printf 'opencv-python-headless>=4.1.1\n' >> "${req}"
+
+  uv pip install --python "${venv}/bin/python" -r "${req}"
+  uv pip install --python "${venv}/bin/python" \
+    'onnx==1.18.0' onnxruntime 'onnx-simplifier==0.4.*' onnxscript
+
+  printf '%s\n' "${marker_ver}" > "${marker}"
+  echo "Export environment ready."
+}
+
+export_onnx() {
+  local model_size="$1"
+  local img_size="$2"
+  local out_name="yolov9-${model_size}-${img_size}.onnx"
+  local out_path="${MODEL_CACHE}/${out_name}"
+  local weights_name="yolov9-${model_size}-converted.pt"
+  local weights_path="${EXPORT_HOME}/weights/${weights_name}"
+  local src="${EXPORT_HOME}/src/yolov9"
+  local venv="${EXPORT_HOME}/.venv"
+  local produced="${src}/yolov9-${model_size}.onnx"
+
+  mkdir -p "${MODEL_CACHE}"
+
+  if [[ -f "${out_path}" ]]; then
+    local overwrite
+    if [[ -t 0 ]]; then
+      read -r -p "${out_name} already exists. Overwrite? [y/N]: " overwrite || overwrite=n
+      overwrite="${overwrite,,}"
+      if [[ "${overwrite}" != "y" && "${overwrite}" != "yes" ]]; then
+        echo "Keeping existing ${out_path}"
+        return 0
+      fi
+    else
+      echo "error: ${out_path} already exists (refusing to overwrite non-interactively)" >&2
+      exit 1
+    fi
+  fi
+
+  ensure_export_env
+
+  if [[ ! -f "${weights_path}" ]]; then
+    echo "Downloading ${weights_name}..."
+    download "${YOLO_WEIGHTS_BASE}/${weights_name}" "${weights_path}"
+  fi
+
+  # export.py expects yolov9-${size}.pt next to itself
+  ln -sfn "${weights_path}" "${src}/yolov9-${model_size}.pt"
+  rm -f "${produced}"
+
+  echo "Exporting ${out_name} (may take several minutes)..."
+  (
+    cd "${src}"
+    "${venv}/bin/python" export.py \
+      --weights "./yolov9-${model_size}.pt" \
+      --imgsz "${img_size}" \
+      --simplify \
+      --include onnx
+  )
+
+  if [[ ! -f "${produced}" ]]; then
+    echo "error: export finished but ${produced} was not produced" >&2
+    exit 1
+  fi
+
+  install -m644 "${produced}" "${out_path}"
+  rm -f "${produced}"
+  echo "Installed ${out_path}"
+  echo
+  echo "Point config model.path at this file and match width/height to ${img_size}, e.g.:"
+  cat <<EOF
+model:
+  model_type: yolo-generic
+  width: ${img_size}
+  height: ${img_size}
+  input_tensor: nchw
+  input_dtype: float
+  path: ${out_path}
+EOF
+}
+
+interactive() {
+  echo
+  echo "=== Frigate YOLOv9 ONNX setup ==="
+  echo
+  list_installed
+  echo
+  echo "Available sizes (WongKinYiu converted.pt): t (tiny), s, m, c, e"
+  echo "Common image sizes: 320 (faster), 640 (more accurate)"
+  echo "Export uses a separate uv venv under ${EXPORT_HOME} (CPU PyTorch)."
+  echo
+
+  local model_size
+  model_size="$(prompt_choice "Model size (or skip)" "skip" skip "${MODEL_SIZES[@]}")"
+  if [[ "${model_size}" == "skip" ]]; then
+    echo "Skipping YOLOv9 download."
+    echo "Re-run later with: frigate-download-yolo"
+    return 0
+  fi
+
+  local img_size
+  img_size="$(prompt_choice "Image size" "320" "${IMG_SIZES[@]}")"
+  export_onnx "${model_size}" "${img_size}"
+}
+
+main() {
+  case "${1:-}" in
+    -h | --help)
+      usage
+      ;;
+    --list)
+      list_installed
+      ;;
+    --non-interactive)
+      if [[ $# -ne 3 ]]; then
+        echo "error: --non-interactive requires SIZE and IMG_SIZE" >&2
+        usage >&2
+        exit 1
+      fi
+      if ! validate_choice "$2" "${MODEL_SIZES[@]}"; then
+        echo "error: invalid MODEL_SIZE '$2' (want: ${MODEL_SIZES[*]})" >&2
+        exit 1
+      fi
+      if ! validate_choice "$3" "${IMG_SIZES[@]}"; then
+        echo "error: invalid IMG_SIZE '$3' (want: ${IMG_SIZES[*]})" >&2
+        exit 1
+      fi
+      export_onnx "$2" "$3"
+      ;;
+    "")
+      if [[ ! -t 0 ]]; then
+        echo "No TTY; skipping interactive YOLOv9 setup."
+        echo "Installed models:"
+        list_installed
+        echo "Run later: frigate-download-yolo"
+        exit 0
+      fi
+      interactive
+      ;;
+    *)
+      echo "error: unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"

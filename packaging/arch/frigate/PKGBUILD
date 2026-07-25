@@ -4,7 +4,7 @@
 pkgbase=frigate
 pkgname=(frigate-nginx frigate)
 pkgver=0.17.2
-pkgrel=9
+pkgrel=12
 pkgdesc='NVR with realtime local object detection for IP cameras'
 arch=('x86_64')
 url='https://frigate.video'
@@ -39,6 +39,7 @@ source=(
   go2rtc-frigate.service
   frigate-nginx-start.sh
   go2rtc-frigate.sh
+  frigate-download-yolo
   frigate.install
   frigate.tmpfiles
   frigate.sysusers
@@ -53,6 +54,7 @@ sha256sums=(
   'faa2fcd5168b10764d35081356511d5f84db5c526a1aa4b6add2db94b6853b2b'
   'cd5e2cc834bcfa30149e7511f2b5a2183baf0b70dc091af717a89a64e44a2985'
   'b7b93ebfd24c1161cec7aecfad62ab51f2241149358cef354b86cdbc6a60546f'
+  'SKIP'
   'SKIP'
   'SKIP'
   'SKIP'
@@ -173,6 +175,7 @@ package_frigate() {
     python
     nvidia-utils
     openssl
+    uv
   )
   optdepends=(
     'ffmpeg-full: AUR build with extra/nonfree codecs (optional; repo ffmpeg has NVDEC/NVENC)'
@@ -214,6 +217,11 @@ package_frigate() {
   install -dm755 "${pkgdir}/usr/local/nginx/conf" "${pkgdir}/usr/local/nginx/templates"
   cp -a "${src}/docker/main/rootfs/usr/local/nginx/conf/." "${pkgdir}/usr/local/nginx/conf/"
   cp -a "${src}/docker/main/rootfs/usr/local/nginx/templates/." "${pkgdir}/usr/local/nginx/templates/"
+  # Docker logs to /dev/stdout; systemd cannot reopen that path (ENXIO).
+  sed -i \
+    -e 's|error_log /dev/stdout warn;|error_log stderr warn;|' \
+    -e 's|access_log /dev/stdout main;|access_log /var/log/frigate/nginx-access.log main;|' \
+    "${pkgdir}/usr/local/nginx/conf/nginx.conf"
   # 0.17.x helpers (and optionally newer combined helper if present in the tree)
   for helper in get_base_path.py get_listen_settings.py get_nginx_settings.py; do
     if [[ -f "${src}/docker/main/rootfs/usr/local/nginx/${helper}" ]]; then
@@ -241,6 +249,8 @@ package_frigate() {
     "${pkgdir}/usr/lib/tmpfiles.d/frigate.conf"
   install -Dm644 "${srcdir}/frigate.sysusers" \
     "${pkgdir}/usr/lib/sysusers.d/frigate.conf"
+  install -Dm755 "${srcdir}/frigate-download-yolo" \
+    "${pkgdir}/usr/bin/frigate-download-yolo"
   install -Dm644 "${srcdir}/config.yml.example" \
     "${pkgdir}/usr/share/frigate/config.yml.example"
   install -Dm644 "${srcdir}/README.md" \

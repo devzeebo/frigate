@@ -8,3 +8,6 @@ d /media/frigate/exports 0755 root root -
 d /tmp/cache 0755 root root -
 d /etc/letsencrypt/www 0755 root root -
 d /etc/letsencrypt/live/frigate 0755 root root -
+d /var/cache/frigate 0755 root root -
+d /var/cache/frigate/yolov9-export 0755 root root -
+d /var/log/frigate 0755 root root -

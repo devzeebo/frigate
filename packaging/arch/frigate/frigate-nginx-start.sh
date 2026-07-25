@@ -8,7 +8,8 @@ export PATH="/opt/frigate/.venv/bin:/usr/local/tempio/bin:/usr/local/nginx/sbin:
 export DEFAULT_FFMPEG_VERSION="${DEFAULT_FFMPEG_VERSION:-system}"
 export INCLUDED_FFMPEG_VERSIONS="${INCLUDED_FFMPEG_VERSIONS:-system}"
 
-mkdir -p /etc/letsencrypt/www /etc/letsencrypt/live/frigate /var/run /dev/shm/nginx_cache
+mkdir -p /etc/letsencrypt/www /etc/letsencrypt/live/frigate /var/run \
+  /dev/shm/nginx_cache /var/log/frigate
 
 letsencrypt_path=/etc/letsencrypt/live/frigate
 if [[ ! -f "${letsencrypt_path}/privkey.pem" || ! -f "${letsencrypt_path}/fullchain.pem" ]]; then
@@ -23,7 +24,13 @@ cpus="$(nproc)"
 if [[ "${cpus}" -gt 4 ]]; then
   cpus=4
 fi
-sed -i "s/worker_processes auto;/worker_processes ${cpus};/" /usr/local/nginx/conf/nginx.conf || true
+# Docker conf logs to /dev/stdout; under systemd that reopen fails with ENXIO.
+# stderr goes to the journal; access log uses a real file.
+sed -i \
+  -e "s/worker_processes auto;/worker_processes ${cpus};/" \
+  -e 's|error_log /dev/stdout warn;|error_log stderr warn;|' \
+  -e 's|access_log /dev/stdout main;|access_log /var/log/frigate/nginx-access.log main;|' \
+  /usr/local/nginx/conf/nginx.conf || true
 
 # 0.17.x: separate helpers. Newer trees may ship get_nginx_settings.py instead.
 tempio_bin="${TEMPIO:-/usr/local/tempio/bin/tempio}"
