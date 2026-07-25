@@ -4,7 +4,7 @@
 pkgbase=frigate
 pkgname=(frigate-nginx frigate)
 pkgver=0.17.2
-pkgrel=4
+pkgrel=5
 pkgdesc='NVR with realtime local object detection for IP cameras'
 arch=('x86_64')
 url='https://frigate.video'
@@ -113,9 +113,12 @@ build() {
     rm -rf dist/BASE_PATH
   fi
 
-  # --- Python venv via uv (all deps from pip, including CUDA ORT) ---
+  # --- Python venv via uv (CPython 3.13; Arch system Python is too new for
+  # some pinned wheels such as tokenizers==0.20.3 required by transformers) ---
   cd "${srcdir}/frigate-${pkgver}"
-  uv venv "${srcdir}/frigate-venv"
+  export UV_PYTHON_INSTALL_DIR="${srcdir}/uv-python"
+  uv python install 3.13
+  uv venv --python 3.13 --relocatable "${srcdir}/frigate-venv"
   local venv_python="${srcdir}/frigate-venv/bin/python"
   uv pip install --python "${venv_python}" -r "${srcdir}/requirements-arch.txt"
   # Transitive deps may pull CPU onnxruntime; force the CUDA build last
@@ -176,14 +179,17 @@ package_frigate() {
   install -Dm644 "${src}/labelmap.txt" "${pkgdir}/labelmap.txt"
   install -Dm644 "${src}/audio-labelmap.txt" "${pkgdir}/audio-labelmap.txt"
 
-  # venv
+  # Managed CPython 3.13 (uv) + venv; rewrite build paths for /opt/frigate
+  cp -a "${srcdir}/uv-python" "${opt}/.python"
   cp -a "${srcdir}/frigate-venv" "${opt}/.venv"
-  # Rewrite venv shebangs / paths to install location
   local venv="${opt}/.venv"
   sed -i "s|${srcdir}/frigate-venv|/opt/frigate/.venv|g" "${venv}/bin/"* 2>/dev/null || true
-  # virtualenv.cfg / pyvenv.cfg
+  sed -i "s|${srcdir}/uv-python|/opt/frigate/.python|g" "${venv}/bin/"* 2>/dev/null || true
   if [[ -f "${venv}/pyvenv.cfg" ]]; then
-    sed -i "s|${srcdir}/frigate-venv|/opt/frigate/.venv|g" "${venv}/pyvenv.cfg"
+    sed -i \
+      -e "s|${srcdir}/frigate-venv|/opt/frigate/.venv|g" \
+      -e "s|${srcdir}/uv-python|/opt/frigate/.python|g" \
+      "${venv}/pyvenv.cfg"
   fi
 
   # Helpers used by go2rtc / nginx start scripts (0.17.x layout)
