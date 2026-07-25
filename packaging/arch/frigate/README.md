@@ -153,7 +153,7 @@ Services run as **root** (same as the upstream container) so GPU and device node
 
 ## Building notes
 
-- Nginx compile steps are ported from Frigate’s `docker/main/build_nginx.sh` (no Debian `apt`).
+- Nginx compile steps are ported from Frigate’s `docker/main/build_nginx.sh` (no Debian `apt`). A small GCC 15+ prototype patch is applied to nginx-vod-module (`nginx-vod-exit-process.patch`).
 - Web UI build uses nvm-managed Node 20 (matches upstream `node:20`); pacman `nodejs` / `npm` are not used.
 - Python deps are installed with `uv` into `/opt/frigate/.venv` from `requirements-arch.txt` (numpy, scipy, opencv, and `onnxruntime-gpu` plus NVIDIA CUDA pip libs). No Arch/AUR Python packages are required at runtime beyond `python` and `nvidia-utils`.
 - TFLite / OpenVINO wheels are omitted; this package targets NVIDIA ONNX detection.

@@ -4,7 +4,7 @@
 pkgbase=frigate
 pkgname=(frigate-nginx frigate)
 pkgver=0.17.2
-pkgrel=3
+pkgrel=4
 pkgdesc='NVR with realtime local object detection for IP cameras'
 arch=('x86_64')
 url='https://frigate.video'
@@ -31,6 +31,7 @@ source=(
   "set-misc-nginx-module-0.33.tar.gz::https://github.com/openresty/set-misc-nginx-module/archive/refs/tags/v0.33.tar.gz"
   "tempio_amd64::https://github.com/home-assistant/tempio/releases/download/2021.09.0/tempio_amd64"
   nginx-vod-rbsp.patch
+  nginx-vod-exit-process.patch
   requirements-arch.txt
   frigate.service
   frigate-nginx.service
@@ -63,6 +64,7 @@ sha256sums=(
   'SKIP'
   'SKIP'
   'SKIP'
+  'SKIP'
 )
 
 prepare() {
@@ -70,6 +72,8 @@ prepare() {
   sed -i 's/MAX_CLIPS (128)/MAX_CLIPS (1080)/g' \
     "${srcdir}/nginx-vod-module-1.31/vod/media_set.h"
   patch -d "${srcdir}/nginx-vod-module-1.31" -p1 < "${srcdir}/nginx-vod-rbsp.patch"
+  # GCC 15+ treats unprototyped () as (void); match ngx_module_t exit hooks
+  patch -d "${srcdir}/nginx-vod-module-1.31" -p1 < "${srcdir}/nginx-vod-exit-process.patch"
 }
 
 build() {
