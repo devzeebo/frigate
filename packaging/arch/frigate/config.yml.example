@@ -5,7 +5,7 @@ mqtt:
   enabled: false
 
 ffmpeg:
-  # Use system ffmpeg from ffmpeg-full / ffmpeg-cuda-full (AUR)
+  # System ffmpeg (repo package is fine; ffmpeg-full only if you need extra codecs)
   path: /usr
   hwaccel_args: preset-nvidia
 

@@ -86,8 +86,9 @@ AUR packages are **not** fetched by `makepkg`. Install them first:
 
 ```bash
 # AUR helper required (yay, paru, ...)
-yay -S nvm go2rtc ffmpeg-full
-# alternate: yay -S nvm go2rtc ffmpeg-cuda-full
+yay -S nvm go2rtc
+# Optional: ffmpeg-full or ffmpeg-cuda-full if you need extra/nonfree codecs.
+# Repo ffmpeg already supports NVIDIA NVDEC/NVENC with nvidia-utils.
 ```
 
 Build-time Node comes from nvm (not pacman `nodejs`). The PKGBUILD sources
@@ -117,7 +118,7 @@ sudo cp /usr/share/frigate/config.yml.example /config/config.yml
 
 NVIDIA-oriented defaults in the example:
 
-- `ffmpeg.path: /usr` (system ffmpeg from AUR)
+- `ffmpeg.path: /usr` (system ffmpeg; repo package is fine)
 - `ffmpeg.hwaccel_args: preset-nvidia`
 - `detectors.onnx` with pip `onnxruntime-gpu` (CUDA EP in `/opt/frigate/.venv`)
 
@@ -153,7 +154,7 @@ Services run as **root** (same as the upstream container) so GPU and device node
 
 ## Building notes
 
-- Nginx compile steps are ported from Frigate’s `docker/main/build_nginx.sh` (no Debian `apt`). A small GCC 15+ prototype patch is applied to nginx-vod-module (`nginx-vod-exit-process.patch`).
+- Nginx compile steps are ported from Frigate’s `docker/main/build_nginx.sh` (no Debian `apt`). Patches: GCC 15+ exit_process prototype (`nginx-vod-exit-process.patch`) and FFmpeg 7+ `avcodec_close` removal (`nginx-vod-ffmpeg8.patch`).
 - Web UI build uses nvm-managed Node 20 (matches upstream `node:20`); pacman `nodejs` / `npm` are not used.
 - Python deps are installed with `uv` into `/opt/frigate/.venv` from `requirements-arch.txt` (numpy, scipy, opencv, and `onnxruntime-gpu` plus NVIDIA CUDA pip libs). The venv uses uv-managed **CPython 3.13** (bundled under `/opt/frigate/.python`) because Arch’s system Python is newer than many pinned wheels (for example `tokenizers==0.20.3`). No Arch/AUR Python packages are required at runtime beyond helper scripts that call system `python3`, plus `nvidia-utils`.
 - TFLite / OpenVINO wheels are omitted; this package targets NVIDIA ONNX detection.

@@ -4,7 +4,7 @@
 pkgbase=frigate
 pkgname=(frigate-nginx frigate)
 pkgver=0.17.2
-pkgrel=5
+pkgrel=6
 pkgdesc='NVR with realtime local object detection for IP cameras'
 arch=('x86_64')
 url='https://frigate.video'
@@ -32,6 +32,7 @@ source=(
   "tempio_amd64::https://github.com/home-assistant/tempio/releases/download/2021.09.0/tempio_amd64"
   nginx-vod-rbsp.patch
   nginx-vod-exit-process.patch
+  nginx-vod-ffmpeg8.patch
   requirements-arch.txt
   frigate.service
   frigate-nginx.service
@@ -65,6 +66,7 @@ sha256sums=(
   'SKIP'
   'SKIP'
   'SKIP'
+  'SKIP'
 )
 
 prepare() {
@@ -74,6 +76,8 @@ prepare() {
   patch -d "${srcdir}/nginx-vod-module-1.31" -p1 < "${srcdir}/nginx-vod-rbsp.patch"
   # GCC 15+ treats unprototyped () as (void); match ngx_module_t exit hooks
   patch -d "${srcdir}/nginx-vod-module-1.31" -p1 < "${srcdir}/nginx-vod-exit-process.patch"
+  # FFmpeg 7+ removed avcodec_close; use avcodec_free_context
+  patch -d "${srcdir}/nginx-vod-module-1.31" -p1 < "${srcdir}/nginx-vod-ffmpeg8.patch"
 }
 
 build() {
@@ -161,7 +165,7 @@ package_frigate() {
     openssl
   )
   optdepends=(
-    'ffmpeg-full: AUR build with full codec/CUDA support (recommended)'
+    'ffmpeg-full: AUR build with extra/nonfree codecs (optional; repo ffmpeg has NVDEC/NVENC)'
     'ffmpeg-cuda-full: alternate AUR ffmpeg with CUDA'
   )
   install=frigate.install

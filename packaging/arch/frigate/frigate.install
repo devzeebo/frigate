@@ -14,7 +14,9 @@ Bind-mount /config and /media/frigate from the Proxmox host for persistence.
 Size /dev/shm for your camera count (see Frigate shm calculator docs).
 
 AUR dependencies must be installed before this package:
-  yay -S go2rtc ffmpeg-full
+  yay -S go2rtc
+Repo ffmpeg is enough for NVIDIA hwaccel (nvidia-utils). Optional AUR builds
+like ffmpeg-full only matter if you need extra/nonfree codecs.
 
 See /usr/share/doc/frigate/README.md for Proxmox LXC + NVIDIA setup.
 EOF
